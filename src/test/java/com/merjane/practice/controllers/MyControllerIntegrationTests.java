@@ -151,6 +151,21 @@ class MyControllerIntegrationTests {
         Mockito.verifyNoMoreInteractions(notificationService);
     }
 
+    @Test
+    void should_notify_out_of_stock_and_empty_stock_on_season_end_day() throws Exception {
+        // Comportement legacy (bug probable) : borne stricte isBefore, le dernier jour de saison
+        // le produit n'est pas vendu, et comme now + leadTime dépasse la fin de saison,
+        // le stock restant (30) est remis à 0.
+        Product product = productRepository.save(new Product(null, 15, 30, "SEASONAL", "Melon",
+                null, LocalDate.now().minusDays(10), LocalDate.now()));
+
+        Product result = processSingleProductOrder(product);
+
+        assertEquals(0, result.getAvailable());
+        Mockito.verify(notificationService).sendOutOfStockNotification("Melon");
+        Mockito.verifyNoMoreInteractions(notificationService);
+    }
+
     // ---------- EXPIRABLE ----------
 
     @Test
@@ -188,6 +203,21 @@ class MyControllerIntegrationTests {
 
         assertEquals(0, result.getAvailable());
         Mockito.verify(notificationService).sendExpirationNotification("Yogurt", expiryDate);
+        Mockito.verifyNoMoreInteractions(notificationService);
+    }
+
+    @Test
+    void should_consider_expirable_product_as_expired_on_expiry_day() throws Exception {
+        // Comportement legacy : borne stricte isAfter, le jour de la date d'expiration
+        // le produit est considéré comme expiré (stock 10 remis à 0).
+        LocalDate expiryDate = LocalDate.now();
+        Product product = productRepository.save(new Product(null, 15, 10, "EXPIRABLE", "Cheese",
+                expiryDate, null, null));
+
+        Product result = processSingleProductOrder(product);
+
+        assertEquals(0, result.getAvailable());
+        Mockito.verify(notificationService).sendExpirationNotification("Cheese", expiryDate);
         Mockito.verifyNoMoreInteractions(notificationService);
     }
 
