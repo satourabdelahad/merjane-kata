@@ -6,6 +6,7 @@ import com.merjane.practice.repositories.OrderRepository;
 import com.merjane.practice.repositories.ProductRepository;
 import com.merjane.practice.services.NotificationService;
 import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -39,6 +40,26 @@ class MyControllerIntegrationTests {
     @Autowired
     private ProductRepository productRepository;
 
+    @Test
+    void should_decrement_stock_when_normal_product_is_in_stock() throws Exception {
+        // GIVEN : un seul produit NORMAL avec 30 en stock
+        Product product = productRepository.save(
+                new Product(null, 15, 30, "NORMAL", "USB Cable", null, null, null));
+        Order order = orderRepository.save(createOrder(Set.of(product)));
+
+        // WHEN
+        mockMvc.perform(post("/orders/{orderId}/processOrder", order.getId())
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk());
+
+        // THEN
+        Product result = productRepository.findById(product.getId()).get();
+        // TODO 1 : vérifier la nouvelle valeur de available
+        assertEquals(result.getAvailable().intValue(), 29);
+        // TODO 2 : vérifier qu'AUCUNE notification n'a été envoyée
+        Mockito.verifyNoInteractions(notificationService);
+        //          (indice : Mockito.verifyNoInteractions)
+    }
     @Test
     void processOrderShouldReturn() throws Exception {
         List<Product> allProducts = createProducts();
