@@ -54,12 +54,151 @@ class MyControllerIntegrationTests {
 
         // THEN
         Product result = productRepository.findById(product.getId()).get();
-        // TODO 1 : vérifier la nouvelle valeur de available
-        assertEquals(result.getAvailable().intValue(), 29);
-        // TODO 2 : vérifier qu'AUCUNE notification n'a été envoyée
+
+        assertEquals(29, result.getAvailable());
+
         Mockito.verifyNoInteractions(notificationService);
         //          (indice : Mockito.verifyNoInteractions)
     }
+
+    // ---------- NORMAL ----------
+
+    @Test
+    void should_notify_delay_when_normal_product_is_out_of_stock() throws Exception {
+        Product product = productRepository.save(
+                new Product(null, 10, 0, "NORMAL", "USB Dongle", null, null, null));
+
+        Product result = processSingleProductOrder(product);
+
+        assertEquals(0, result.getAvailable());
+        assertEquals(10, result.getLeadTime());
+        Mockito.verify(notificationService).sendDelayNotification(10, "USB Dongle");
+        Mockito.verifyNoMoreInteractions(notificationService);
+    }
+
+    @Test
+    void should_do_nothing_when_normal_product_is_out_of_stock_and_lead_time_is_zero() throws Exception {
+        // Comportement legacy : aucune notification si leadTime = 0
+        Product product = productRepository.save(
+                new Product(null, 0, 0, "NORMAL", "USB Hub", null, null, null));
+
+        Product result = processSingleProductOrder(product);
+
+        assertEquals(0, result.getAvailable());
+        Mockito.verifyNoInteractions(notificationService);
+    }
+
+    // ---------- SEASONAL ----------
+
+    @Test
+    void should_decrement_stock_when_seasonal_product_is_in_season_and_in_stock() throws Exception {
+        Product product = productRepository.save(new Product(null, 15, 30, "SEASONAL", "Watermelon",
+                null, LocalDate.now().minusDays(2), LocalDate.now().plusDays(58)));
+
+        Product result = processSingleProductOrder(product);
+
+        assertEquals(29, result.getAvailable());
+        Mockito.verifyNoInteractions(notificationService);
+    }
+
+    @Test
+    void should_notify_delay_when_seasonal_product_is_out_of_stock_and_restock_is_within_season() throws Exception {
+        Product product = productRepository.save(new Product(null, 15, 0, "SEASONAL", "Watermelon",
+                null, LocalDate.now().minusDays(2), LocalDate.now().plusDays(58)));
+
+        Product result = processSingleProductOrder(product);
+
+        assertEquals(0, result.getAvailable());
+        Mockito.verify(notificationService).sendDelayNotification(15, "Watermelon");
+        Mockito.verifyNoMoreInteractions(notificationService);
+    }
+
+    @Test
+    void should_notify_out_of_stock_when_seasonal_product_restock_exceeds_season_end() throws Exception {
+        Product product = productRepository.save(new Product(null, 30, 0, "SEASONAL", "Strawberry",
+                null, LocalDate.now().minusDays(2), LocalDate.now().plusDays(10)));
+
+        Product result = processSingleProductOrder(product);
+
+        assertEquals(0, result.getAvailable());
+        Mockito.verify(notificationService).sendOutOfStockNotification("Strawberry");
+        Mockito.verifyNoMoreInteractions(notificationService);
+    }
+
+    @Test
+    void should_notify_out_of_stock_and_keep_stock_when_season_has_not_started() throws Exception {
+        Product product = productRepository.save(new Product(null, 15, 30, "SEASONAL", "Grapes",
+                null, LocalDate.now().plusDays(180), LocalDate.now().plusDays(240)));
+
+        Product result = processSingleProductOrder(product);
+
+        assertEquals(30, result.getAvailable());
+        Mockito.verify(notificationService).sendOutOfStockNotification("Grapes");
+        Mockito.verifyNoMoreInteractions(notificationService);
+    }
+
+    @Test
+    void should_notify_delay_instead_of_selling_on_season_start_day() throws Exception {
+        // Comportement legacy (bug probable) : bornes strictes isAfter/isBefore,
+        // le jour même du début de saison le produit n'est pas vendu.
+        Product product = productRepository.save(new Product(null, 15, 30, "SEASONAL", "Cherries",
+                null, LocalDate.now(), LocalDate.now().plusDays(60)));
+
+        Product result = processSingleProductOrder(product);
+
+        assertEquals(30, result.getAvailable());
+        Mockito.verify(notificationService).sendDelayNotification(15, "Cherries");
+        Mockito.verifyNoMoreInteractions(notificationService);
+    }
+
+    // ---------- EXPIRABLE ----------
+
+    @Test
+    void should_decrement_stock_when_expirable_product_is_not_expired_and_in_stock() throws Exception {
+        Product product = productRepository.save(new Product(null, 15, 30, "EXPIRABLE", "Butter",
+                LocalDate.now().plusDays(26), null, null));
+
+        Product result = processSingleProductOrder(product);
+
+        assertEquals(29, result.getAvailable());
+        Mockito.verifyNoInteractions(notificationService);
+    }
+
+    @Test
+    void should_notify_expiration_and_empty_stock_when_expirable_product_is_expired() throws Exception {
+        LocalDate expiryDate = LocalDate.now().minusDays(2);
+        Product product = productRepository.save(new Product(null, 90, 6, "EXPIRABLE", "Milk",
+                expiryDate, null, null));
+
+        Product result = processSingleProductOrder(product);
+
+        assertEquals(0, result.getAvailable());
+        Mockito.verify(notificationService).sendExpirationNotification("Milk", expiryDate);
+        Mockito.verifyNoMoreInteractions(notificationService);
+    }
+
+    @Test
+    void should_notify_expiration_when_expirable_product_is_not_expired_but_out_of_stock() throws Exception {
+        // Comportement legacy (bug probable) : une rupture de stock est signalée comme une expiration.
+        LocalDate expiryDate = LocalDate.now().plusDays(10);
+        Product product = productRepository.save(new Product(null, 5, 0, "EXPIRABLE", "Yogurt",
+                expiryDate, null, null));
+
+        Product result = processSingleProductOrder(product);
+
+        assertEquals(0, result.getAvailable());
+        Mockito.verify(notificationService).sendExpirationNotification("Yogurt", expiryDate);
+        Mockito.verifyNoMoreInteractions(notificationService);
+    }
+
+    private Product processSingleProductOrder(Product product) throws Exception {
+        Order order = orderRepository.save(createOrder(Set.of(product)));
+        mockMvc.perform(post("/orders/{orderId}/processOrder", order.getId())
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk());
+        return productRepository.findById(product.getId()).get();
+    }
+
     @Test
     void processOrderShouldReturn() throws Exception {
         List<Product> allProducts = createProducts();

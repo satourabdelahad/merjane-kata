@@ -8,3 +8,9 @@ La liste des éléments à prendre en considération et à faire par la suite
 - SRP le controlleur fait 6 choses à la fois, si je modifie il y aura un risque de regression
 - 
 
+
+## Comportements legacy figés par les tests de caractérisation (à valider avec le métier)
+
+- SEASONAL : le jour même du début de saison (bornes strictes `isAfter`/`isBefore`), le produit n'est pas vendu → notification de délai
+- EXPIRABLE : un produit non expiré mais en rupture déclenche une notification d'**expiration** et remet le stock à 0
+- NORMAL : en rupture avec `leadTime = 0`, aucune notification n'est envoyée
