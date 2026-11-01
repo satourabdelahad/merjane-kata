@@ -14,6 +14,7 @@ import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.time.Clock;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -39,6 +40,9 @@ class MyControllerIntegrationTests {
 
     @Autowired
     private ProductRepository productRepository;
+
+    @Autowired
+    static Clock clock;
 
     @Test
     void should_decrement_stock_when_normal_product_is_in_stock() throws Exception {
@@ -93,7 +97,7 @@ class MyControllerIntegrationTests {
     @Test
     void should_decrement_stock_when_seasonal_product_is_in_season_and_in_stock() throws Exception {
         Product product = productRepository.save(new Product(null, 15, 30, "SEASONAL", "Watermelon",
-                null, LocalDate.now().minusDays(2), LocalDate.now().plusDays(58)));
+                null, LocalDate.now(clock).minusDays(2), LocalDate.now(clock).plusDays(58)));
 
         Product result = processSingleProductOrder(product);
 
@@ -104,7 +108,7 @@ class MyControllerIntegrationTests {
     @Test
     void should_notify_delay_when_seasonal_product_is_out_of_stock_and_restock_is_within_season() throws Exception {
         Product product = productRepository.save(new Product(null, 15, 0, "SEASONAL", "Watermelon",
-                null, LocalDate.now().minusDays(2), LocalDate.now().plusDays(58)));
+                null, LocalDate.now(clock).minusDays(2), LocalDate.now(clock).plusDays(58)));
 
         Product result = processSingleProductOrder(product);
 
@@ -116,7 +120,7 @@ class MyControllerIntegrationTests {
     @Test
     void should_notify_out_of_stock_when_seasonal_product_restock_exceeds_season_end() throws Exception {
         Product product = productRepository.save(new Product(null, 30, 0, "SEASONAL", "Strawberry",
-                null, LocalDate.now().minusDays(2), LocalDate.now().plusDays(10)));
+                null, LocalDate.now(clock).minusDays(2), LocalDate.now(clock).plusDays(10)));
 
         Product result = processSingleProductOrder(product);
 
@@ -128,7 +132,7 @@ class MyControllerIntegrationTests {
     @Test
     void should_notify_out_of_stock_and_keep_stock_when_season_has_not_started() throws Exception {
         Product product = productRepository.save(new Product(null, 15, 30, "SEASONAL", "Grapes",
-                null, LocalDate.now().plusDays(180), LocalDate.now().plusDays(240)));
+                null, LocalDate.now(clock).plusDays(180), LocalDate.now(clock).plusDays(240)));
 
         Product result = processSingleProductOrder(product);
 
@@ -142,7 +146,7 @@ class MyControllerIntegrationTests {
         // Comportement legacy (bug probable) : bornes strictes isAfter/isBefore,
         // le jour même du début de saison le produit n'est pas vendu.
         Product product = productRepository.save(new Product(null, 15, 30, "SEASONAL", "Cherries",
-                null, LocalDate.now(), LocalDate.now().plusDays(60)));
+                null, LocalDate.now(clock), LocalDate.now(clock).plusDays(60)));
 
         Product result = processSingleProductOrder(product);
 
@@ -157,7 +161,7 @@ class MyControllerIntegrationTests {
         // le produit n'est pas vendu, et comme now + leadTime dépasse la fin de saison,
         // le stock restant (30) est remis à 0.
         Product product = productRepository.save(new Product(null, 15, 30, "SEASONAL", "Melon",
-                null, LocalDate.now().minusDays(10), LocalDate.now()));
+                null, LocalDate.now(clock).minusDays(10), LocalDate.now(clock)));
 
         Product result = processSingleProductOrder(product);
 
@@ -171,7 +175,7 @@ class MyControllerIntegrationTests {
     @Test
     void should_decrement_stock_when_expirable_product_is_not_expired_and_in_stock() throws Exception {
         Product product = productRepository.save(new Product(null, 15, 30, "EXPIRABLE", "Butter",
-                LocalDate.now().plusDays(26), null, null));
+                LocalDate.now(clock).plusDays(26), null, null));
 
         Product result = processSingleProductOrder(product);
 
@@ -181,7 +185,7 @@ class MyControllerIntegrationTests {
 
     @Test
     void should_notify_expiration_and_empty_stock_when_expirable_product_is_expired() throws Exception {
-        LocalDate expiryDate = LocalDate.now().minusDays(2);
+        LocalDate expiryDate = LocalDate.now(clock).minusDays(2);
         Product product = productRepository.save(new Product(null, 90, 6, "EXPIRABLE", "Milk",
                 expiryDate, null, null));
 
@@ -195,7 +199,7 @@ class MyControllerIntegrationTests {
     @Test
     void should_notify_expiration_when_expirable_product_is_not_expired_but_out_of_stock() throws Exception {
         // Comportement legacy (bug probable) : une rupture de stock est signalée comme une expiration.
-        LocalDate expiryDate = LocalDate.now().plusDays(10);
+        LocalDate expiryDate = LocalDate.now(clock).plusDays(10);
         Product product = productRepository.save(new Product(null, 5, 0, "EXPIRABLE", "Yogurt",
                 expiryDate, null, null));
 
@@ -210,7 +214,7 @@ class MyControllerIntegrationTests {
     void should_consider_expirable_product_as_expired_on_expiry_day() throws Exception {
         // Comportement legacy : borne stricte isAfter, le jour de la date d'expiration
         // le produit est considéré comme expiré (stock 10 remis à 0).
-        LocalDate expiryDate = LocalDate.now();
+        LocalDate expiryDate = LocalDate.now(clock);
         Product product = productRepository.save(new Product(null, 15, 10, "EXPIRABLE", "Cheese",
                 expiryDate, null, null));
 
@@ -256,10 +260,10 @@ class MyControllerIntegrationTests {
         List<Product> products = new ArrayList<>();
         products.add(new Product(null, 15, 30, "NORMAL", "USB Cable", null, null, null));
         products.add(new Product(null, 10, 0, "NORMAL", "USB Dongle", null, null, null));
-        products.add(new Product(null, 15, 30, "EXPIRABLE", "Butter", LocalDate.now().plusDays(26), null, null));
-        products.add(new Product(null, 90, 6, "EXPIRABLE", "Milk", LocalDate.now().minusDays(2), null, null));
-        products.add(new Product(null, 15, 30, "SEASONAL", "Watermelon", null, LocalDate.now().minusDays(2), LocalDate.now().plusDays(58)));
-        products.add(new Product(null, 15, 30, "SEASONAL", "Grapes", null, LocalDate.now().plusDays(180), LocalDate.now().plusDays(240)));
+        products.add(new Product(null, 15, 30, "EXPIRABLE", "Butter", LocalDate.now(clock).plusDays(26), null, null));
+        products.add(new Product(null, 90, 6, "EXPIRABLE", "Milk", LocalDate.now(clock).minusDays(2), null, null));
+        products.add(new Product(null, 15, 30, "SEASONAL", "Watermelon", null, LocalDate.now(clock).minusDays(2), LocalDate.now(clock).plusDays(58)));
+        products.add(new Product(null, 15, 30, "SEASONAL", "Grapes", null, LocalDate.now(clock).plusDays(180), LocalDate.now(clock).plusDays(240)));
         return products;
     }
 }

@@ -10,6 +10,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.Clock;
 import java.time.LocalDate;
 import java.util.Set;
 
@@ -25,6 +26,9 @@ public class OrderController {
 
     @Autowired
     private OrderRepository or;
+
+    @Autowired
+    Clock clock;
 
     @PostMapping("{orderId}/processOrder")
     @ResponseStatus(HttpStatus.OK)
@@ -45,7 +49,7 @@ public class OrderController {
                 }
             } else if (p.getType().equals("SEASONAL")) {
                 // Add new season rules
-                if ((LocalDate.now().isAfter(p.getSeasonStartDate()) && LocalDate.now().isBefore(p.getSeasonEndDate())
+                if ((LocalDate.now(clock).isAfter(p.getSeasonStartDate()) && LocalDate.now(clock).isBefore(p.getSeasonEndDate())
                         && p.getAvailable() > 0)) {
                     p.setAvailable(p.getAvailable() - 1);
                     pr.save(p);
@@ -53,7 +57,7 @@ public class OrderController {
                     ps.handleSeasonalProduct(p);
                 }
             } else if (p.getType().equals("EXPIRABLE")) {
-                if (p.getAvailable() > 0 && p.getExpiryDate().isAfter(LocalDate.now())) {
+                if (p.getAvailable() > 0 && p.getExpiryDate().isAfter(LocalDate.now(clock))) {
                     p.setAvailable(p.getAvailable() - 1);
                     pr.save(p);
                 } else {
