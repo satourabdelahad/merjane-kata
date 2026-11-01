@@ -6,7 +6,9 @@ La liste des éléments à prendre en considération et à faire par la suite
 - Les opérations de décrementation doivent être synchronized et volatile ou Atomic
 - Il faut gérer le cas ou LeadTime = 0
 - SRP le controlleur fait 6 choses à la fois, si je modifie il y aura un risque de regression
-- 
+- Penser architecture Hexagonale avec des ports et adapters
+- Penser Event Sourcing avec le pattern Command, pour envoyer des commandes, 
+sans avoir besoin de les déclencher depuis un endpoint web HTTP
 
 
 ## Comportements legacy figés par les tests de caractérisation (à valider avec le métier)
